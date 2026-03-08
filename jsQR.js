@@ -781,8 +781,10 @@ function readFormatInformation(matrix) {
     return null;
 }
 // ★ システム暗号化復号用：型式情報のマスク番号をビット反転して正しいformatInfoを得る
+// BCH再計算 + FORMAT_INFO_TABLE lookup方式（errorCorrectionLevelの正しいマッピングを保証）
 function readFormatInformationSysEnc(matrix) {
     var G15_MASK = 0x5412;
+    var G15 = 0x537;
     // 左上の型式情報ビットを読み取る
     var topLeftFormatInfoBits = 0;
     for (var x = 0; x <= 8; x++) {
@@ -795,16 +797,59 @@ function readFormatInformationSysEnc(matrix) {
             topLeftFormatInfoBits = pushBit(matrix.get(8, y), topLeftFormatInfoBits);
         }
     }
-    // G15_MASKでXOR解除して元のデータ+ECCを取得
-    var unmasked = topLeftFormatInfoBits ^ G15_MASK;
-    // 上位5ビット: data = (eccLevel << 3) | maskPattern
-    var data5 = (unmasked >> 10) & 0x1F;
-    var eccLevel = (data5 >> 3) & 0x3;
-    var encMask = data5 & 0x7;
-    // マスク番号を3ビット反転
-    var realMask = encMask ^ 0x7;
-    // 正しいformatInfoを返す
-    return { errorCorrectionLevel: eccLevel, dataMask: realMask };
+    // 右下+左下からも読む（冗長セット）
+    var dimension = matrix.height;
+    var topRightBottomRightFormatInfoBits = 0;
+    for (var y = dimension - 1; y >= dimension - 7; y--) {
+        topRightBottomRightFormatInfoBits = pushBit(matrix.get(8, y), topRightBottomRightFormatInfoBits);
+    }
+    for (var x = dimension - 8; x < dimension; x++) {
+        topRightBottomRightFormatInfoBits = pushBit(matrix.get(x, 8), topRightBottomRightFormatInfoBits);
+    }
+    // 両方のセットから復元を試みる
+    var candidates = [topLeftFormatInfoBits, topRightBottomRightFormatInfoBits];
+    for (var ci = 0; ci < candidates.length; ci++) {
+        var rawBits = candidates[ci];
+        // G15_MASKでXOR解除して元のデータ+BCHを取得
+        var unmasked = rawBits ^ G15_MASK;
+        // 上位5ビット: data = (eccLevel << 3) | maskPattern
+        var data5 = (unmasked >> 10) & 0x1F;
+        var eccCode = (data5 >> 3) & 0x3;
+        var encMask = data5 & 0x7;
+        // マスク番号を3ビット反転して元のマスクを復元
+        var realMask = encMask ^ 0x7;
+        // 復元したマスクで正しい型式情報15ビットを再構築
+        var realData = (eccCode << 3) | realMask;
+        // BCH誤り訂正コードを計算
+        var d = realData << 10;
+        var g15digit = 0, tmp = G15;
+        while (tmp) { g15digit++; tmp >>>= 1; }
+        while (true) {
+            var dDigit = 0, dtmp = d;
+            while (dtmp) { dDigit++; dtmp >>>= 1; }
+            if (dDigit - g15digit < 0) break;
+            d ^= (G15 << (dDigit - g15digit));
+        }
+        var correctBits = ((realData << 10) | d) ^ G15_MASK;
+        // FORMAT_INFO_TABLEからルックアップ（正しいerrorCorrectionLevelマッピングを得る）
+        var bestDifference = Infinity;
+        var bestFormatInfo = null;
+        for (var _i = 0; _i < FORMAT_INFO_TABLE.length; _i++) {
+            var entry = FORMAT_INFO_TABLE[_i];
+            if (entry.bits === correctBits) {
+                return entry.formatInfo;
+            }
+            var difference = numBitsDiffering(correctBits, entry.bits);
+            if (difference < bestDifference) {
+                bestFormatInfo = entry.formatInfo;
+                bestDifference = difference;
+            }
+        }
+        if (bestDifference <= 3) {
+            return bestFormatInfo;
+        }
+    }
+    return null;
 }
 function getDataBlocks(codewords, version, ecLevel) {
     var ecInfo = version.errorCorrectionLevels[ecLevel];
