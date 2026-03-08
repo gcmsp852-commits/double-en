@@ -10247,9 +10247,9 @@ function findAlignmentPattern(matrix, alignmentPatternQuads, topRight, topLeft, 
             return;
         }
         var d = distance({ x: x, y: y }, expectedAlignmentPattern);
-        // ★ ツインQR対策：予想位置からの距離がごくわずか(1モジュール以内)の場合のみ採用。
-        // ツインでは別QRのノイズが非常に多いため、少しでも離れたものを採用すると深刻な歪みが発生する。
-        if (d > moduleSize * 1.2) {
+        // ★ ツインQR対策：予想位置からの距離が近いもののみ採用。
+        // ツインでは別QRのノイズが非常に多いが、Ver5等で微妙にずれる場合を考慮して3モジュールまで許容。
+        if (d > moduleSize * 3) {
             return;
         }
         var sizeScore = scorePattern({ x: Math.floor(x), y: Math.floor(y) }, [1, 1, 1], matrix);
@@ -10259,7 +10259,8 @@ function findAlignmentPattern(matrix, alignmentPatternQuads, topRight, topLeft, 
     })
         .filter(function (v) { return !!v; })
         .sort(function (a, b) { return a.score - b.score; });
-    var alignmentPattern = modulesBetweenFinderPatterns >= 15 && alignmentPatterns.length ? alignmentPatterns[0] : expectedAlignmentPattern;
+    // ★ modulesBetweenFinderPatterns >= 25 に変更（V5 ≈ 30モジュールでも expectedAlignmentPattern にフォールバック可能に）
+    var alignmentPattern = modulesBetweenFinderPatterns >= 25 && alignmentPatterns.length ? alignmentPatterns[0] : expectedAlignmentPattern;
     return { alignmentPattern: alignmentPattern, dimension: dimension };
 }
 
