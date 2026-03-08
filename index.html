@@ -429,9 +429,9 @@
                     // 通常モードの Stage 3 でシステム暗号化された第2QRを探す場合
                     const needSysEncForStage3 = (scanMode === 'normal' && scanStage === 3 && sysEncStage3);
 
-                    let useNativeDetector = barcodeDetector && (scanStage === 1 || (scanStage === 3 && !appMask));
+                    let useNativeDetector = barcodeDetector && (scanStage === 1 || (scanStage === 3 && !appMask && !needSysEncForStage3));
                     // システム暗号化復号が必要な場合はネイティブではなくjsQRを使う
-                    if (needSysEncForStage1 || needSysEncForStage3) {
+                    if (needSysEncForStage1) {
                         useNativeDetector = false;
                     }
 
@@ -481,6 +481,49 @@
                                 }
                             }
                         } catch(err) { /* ignore Native Error */ }
+                    }
+
+                    // --- [フェーズ 2] BarcodeDetector位置検出 + jsQRクロップ復号 (appMask専用ハイブリッド) ---
+                    // appMask設定時: BarcodeDetectorでQRの位置だけ検出→クロップ→jsQRで暗号復号
+                    // BarcodeDetector自身は暗号化QRを復号できないが、位置検出は高速に行える
+                    if (detectedItems.length === 0 && barcodeDetector && scanStage === 3 && appMask) {
+                        try {
+                            const barcodes = await barcodeDetector.detect(video);
+                            if (barcodes && barcodes.length > 0) {
+                                for (let i = 0; i < barcodes.length; i++) {
+                                    const b = barcodes[i];
+                                    const bbox = b.boundingBox;
+                                    const PADDING = 50;
+                                    const sx = Math.max(0, Math.floor(bbox.x) - PADDING);
+                                    const sy = Math.max(0, Math.floor(bbox.y) - PADDING);
+                                    const sw = Math.min(video.videoWidth - sx, Math.ceil(bbox.width) + PADDING * 2);
+                                    const sh = Math.min(video.videoHeight - sy, Math.ceil(bbox.height) + PADDING * 2);
+
+                                    zxingCanvas.width = sw;
+                                    zxingCanvas.height = sh;
+                                    zxingCtx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
+                                    const imgData = zxingCtx.getImageData(0, 0, sw, sh);
+
+                                    const cropRes = jsQR(imgData.data, sw, sh, {
+                                        inversionAttempts: "attemptBoth",
+                                        appEncMask: Array.from(appMask)
+                                    });
+
+                                    if (cropRes && cropRes.data && !cropRes.isRaw) {
+                                        detectedItems.push({
+                                            data: cropRes.data,
+                                            managementCode: cropRes.managementCode,
+                                            points: [
+                                                { x: cropRes.location.topLeftCorner.x + sx, y: cropRes.location.topLeftCorner.y + sy },
+                                                { x: cropRes.location.topRightCorner.x + sx, y: cropRes.location.topRightCorner.y + sy },
+                                                { x: cropRes.location.bottomRightCorner.x + sx, y: cropRes.location.bottomRightCorner.y + sy },
+                                                { x: cropRes.location.bottomLeftCorner.x + sx, y: cropRes.location.bottomLeftCorner.y + sy }
+                                            ]
+                                        });
+                                    }
+                                }
+                            }
+                        } catch(err) { /* ignore */ }
                     }
 
                     // --- [フェーズ 3 / Fallback] Custom jsQR Full-Screen Scan ---
