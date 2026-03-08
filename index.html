@@ -422,20 +422,15 @@
                 try {
                     let detectedItems = [];
 
-                    // === 通常モード: Stage 1 ===
-                    // 二重暗号化モードの Stage 1 ではシステム暗号化された第1QRを探す
-                    // → jsQR の sysEncDecode を使う
+                    // === フラグ判定 ===
                     const needSysEncForStage1 = (scanMode === 'double' && scanStage === 1);
-                    // 通常モードの Stage 3 でシステム暗号化された第2QRを探す場合
                     const needSysEncForStage3 = (scanMode === 'normal' && scanStage === 3 && sysEncStage3);
+                    const needEncryptedDecode = needSysEncForStage1 || needSysEncForStage3 || (scanStage === 3 && !!appMask);
 
-                    let useNativeDetector = barcodeDetector && (scanStage === 1 || (scanStage === 3 && !appMask));
-                    // システム暗号化復号が必要な場合はネイティブではなくjsQRを使う
-                    if (needSysEncForStage1 || needSysEncForStage3) {
-                        useNativeDetector = false;
-                    }
+                    // ★ BarcodeDetectorは常に使える場合は使う（位置検出の高速化）
+                    let useNativeDetector = !!barcodeDetector && (scanStage === 1 || scanStage === 3);
 
-                    // --- [フェーズ 1 / ネイティブ優先] Hybrid (BarcodeDetector Crop + jsQR) ---
+                    // --- [フェーズ 1] BarcodeDetector による高速検出 ---
                     if (useNativeDetector) {
                         try {
                             const barcodes = await barcodeDetector.detect(video);
@@ -443,7 +438,8 @@
                                 for (let i = 0; i < barcodes.length; i++) {
                                     const b = barcodes[i];
 
-                                    if (scanStage === 3) {
+                                    // ★ 暗号化不要の第2QR → ネイティブの結果をそのまま使う（最速）
+                                    if (scanStage === 3 && !needEncryptedDecode) {
                                         detectedItems.push({
                                             data: b.rawValue,
                                             managementCode: undefined,
@@ -452,6 +448,7 @@
                                         continue;
                                     }
 
+                                    // ★ クロップ → jsQR で正確にデコード（暗号化対応含む）
                                     const bbox = b.boundingBox;
                                     const PADDING = 50; 
                                     const sx = Math.max(0, Math.floor(bbox.x) - PADDING);
@@ -464,7 +461,16 @@
                                     zxingCtx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
                                     const imgData = zxingCtx.getImageData(0, 0, sw, sh);
 
-                                    const res = jsQR(imgData.data, sw, sh, { inversionAttempts: "attemptBoth" });
+                                    // ★ 暗号化モード用のオプションをクロップにも適用
+                                    const cropOpts = { inversionAttempts: "attemptBoth" };
+                                    if (needSysEncForStage1 || needSysEncForStage3) {
+                                        cropOpts.sysEncDecode = true;
+                                    }
+                                    if (scanStage === 3 && appMask) {
+                                        cropOpts.appEncMask = Array.from(appMask);
+                                    }
+
+                                    const res = jsQR(imgData.data, sw, sh, cropOpts);
                                     
                                     if (res && res.data && !res.isRaw) {
                                         detectedItems.push({
@@ -483,7 +489,7 @@
                         } catch(err) { /* ignore Native Error */ }
                     }
 
-                    // --- [フェーズ 3 / Fallback] Custom jsQR Full-Screen Scan ---
+                    // --- [フェーズ 2 / Fallback] jsQR Full-Screen Scan ---
                     if (detectedItems.length === 0) {
                         zxingCanvas.width = overlayCanvas.width;
                         zxingCanvas.height = overlayCanvas.height;
@@ -496,14 +502,12 @@
                             if (appMask) {
                                 opts.appEncMask = Array.from(appMask);
                             } else if (needSysEncForStage3) {
-                                // 通常モード: 第2QRはシステム暗号化されている
                                 opts.sysEncDecode = true;
                             } else {
                                 opts.multi = true;
                             }
                         }
 
-                        // 二重暗号化モードの Stage 1: システム暗号化された第1QRを探す
                         if (needSysEncForStage1) {
                             opts.sysEncDecode = true;
                         }
