@@ -1,603 +1,664 @@
-
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>QR Twin Reader (システム暗号化対応)</title>
-    <link rel="manifest" href="manifest.json">
-    <link rel="apple-touch-icon" href="icon.png">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="QRツイン">
-    <meta name="theme-color" content="#121212">
-    <style>
-        body { margin: 0; padding: 0; font-family: -apple-system, sans-serif; background-color: #121212; color: #fff; display: flex; flex-direction: column; align-items: center; height: 100dvh; overflow: hidden; }
-        
-        .header { width: 100%; padding: 15px; background-color: #1e1e1e; text-align: center; font-size: 1.2rem; font-weight: bold; box-shadow: 0 2px 10px rgba(0,0,0,0.5); z-index: 10; box-sizing: border-box; }
-        
-        .camera-container { position: relative; width: 100%; flex: 1; background-color: #000; overflow: hidden; display: flex; justify-content: center; align-items: center; }
-        #camera { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; z-index: 1; }
-        #overlayCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; pointer-events: none; z-index: 2; }
-        #zxingCanvas { display: none; }
-        
-        .result-panel { width: 100%; padding: 20px 20px calc(20px + env(safe-area-inset-bottom, 20px)) 20px; background-color: #1e1e1e; box-sizing: border-box; text-align: center; z-index: 10; box-shadow: 0 -2px 10px rgba(0,0,0,0.5); display: flex; flex-direction: column; gap: 10px; }
-        
-        .status { font-size: 0.9rem; color: #ff9800; }
-        
-        .btn { background-color: #2196F3; color: white; border: none; padding: 12px 24px; font-size: 1.1rem; border-radius: 8px; cursor: pointer; display: inline-block; margin-top: 5px; }
-        .btn:active { background-color: #1976D2; }
-        .btn.secondary { background-color: #424242; }
-        .btn.secondary:active { background-color: #212121; }
-        .btn.sys-enc { background-color: #FF6F00; }
-        .btn.sys-enc:active { background-color: #E65100; }
-        .btn.double-enc { background-color: #7B1FA2; }
-        .btn.double-enc:active { background-color: #4A148C; }
-        
-        .mode-btns { display: flex; flex-direction: column; gap: 10px; align-items: center; }
-        .mode-btns .btn { width: 80%; max-width: 300px; }
-        
-        /* 画面オーバーレイ (パスワード・結果画面) */
-        .overlay-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 100; display: none; flex-direction: column; justify-content: center; align-items: center; padding: 20px; box-sizing: border-box; text-align: center; }
-        
-        .overlay-box { background: #1e1e1e; padding: 25px; border-radius: 12px; border: 1px solid #333; width: 90%; max-width: 400px; display: flex; flex-direction: column; gap: 15px; }
-        .overlay-box h2 { margin: 0; color: #4CAF50; font-size: 1.3rem; }
-        .overlay-box p { margin: 0; font-size: 1rem; color: #ccc; word-break: break-all; }
-        .overlay-box input { padding: 12px; font-size: 1.1rem; border-radius: 6px; border: 1px solid #444; background: #000; color: #fff; text-align: center; }
-        input:focus { outline: none; border-color: #2196F3; }
-        
-        .qr-data-card { background: #000; border: 1px solid #333; border-radius: 6px; padding: 10px; text-align: left; }
-        .qr-data-card label { display: block; font-size: 0.8rem; color: #888; margin-bottom: 4px; }
-        .qr-data-card .text { font-size: 1.1rem; color: #fff; word-break: break-all; font-family: monospace; }
-        .qr-data-card .mgmt { font-size: 0.8rem; color: #4CAF50; font-family: monospace; margin-top: 4px; }
-        
-        .enc-badge { display: inline-block; padding: 4px 10px; border-radius: 4px; font-size: 0.85rem; font-weight: bold; margin-bottom: 8px; }
-        .enc-badge.sys { background: rgba(255,111,0,0.2); color: #FF6F00; border: 1px solid rgba(255,111,0,0.4); }
-        .enc-badge.app { background: rgba(123,31,162,0.2); color: #CE93D8; border: 1px solid rgba(123,31,162,0.4); }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>QR Twin Reader</title>
+  <style>
+    :root {
+      --bg: #111827;
+      --panel: #1f2937;
+      --ink: #f3f4f6;
+      --muted: #9ca3af;
+      --primary: #2563eb;
+      --ok: #16a34a;
+      --warn: #f59e0b;
+      --danger: #dc2626;
+      --sys: #f97316;
+      --app: #9333ea;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      padding: 12px 16px;
+      background: #0b1220;
+      border-bottom: 1px solid #374151;
+      font-weight: 700;
+      text-align: center;
+    }
+
+    .camera-wrap {
+      position: relative;
+      flex: 1;
+      min-height: 0;
+      background: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    video, #overlay {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    #overlay { pointer-events: none; }
+
+    footer {
+      border-top: 1px solid #374151;
+      background: #0b1220;
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .status {
+      color: var(--warn);
+      font-size: 14px;
+      text-align: center;
+      min-height: 20px;
+    }
+
+    .mode-buttons {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: 1px solid #4b5563;
+      border-radius: 8px;
+      padding: 10px 16px;
+      background: #1f2937;
+      color: var(--ink);
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    button.primary { background: var(--primary); border-color: var(--primary); }
+    button.sys { background: var(--sys); border-color: var(--sys); }
+    button.app { background: var(--app); border-color: var(--app); }
+
+    .overlay-screen {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.72);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+      z-index: 20;
+    }
+
+    .overlay-screen.show { display: flex; }
+
+    .dialog {
+      width: min(92vw, 520px);
+      background: var(--panel);
+      border: 1px solid #4b5563;
+      border-radius: 12px;
+      padding: 16px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .dialog h2 {
+      margin: 0;
+      font-size: 18px;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      width: fit-content;
+    }
+
+    .badge.sys { background: rgba(249,115,22,0.18); color: #fdba74; border: 1px solid rgba(249,115,22,0.35); }
+    .badge.app { background: rgba(147,51,234,0.18); color: #d8b4fe; border: 1px solid rgba(147,51,234,0.35); }
+
+    .card {
+      background: #111827;
+      border: 1px solid #374151;
+      border-radius: 8px;
+      padding: 10px;
+      display: grid;
+      gap: 6px;
+    }
+
+    .card .label { color: var(--muted); font-size: 12px; }
+    .card .value { word-break: break-all; font-family: Consolas, monospace; font-size: 14px; }
+
+    .dialog input[type="password"] {
+      width: 100%;
+      border: 1px solid #4b5563;
+      border-radius: 8px;
+      padding: 10px;
+      background: #0b1220;
+      color: var(--ink);
+      font-size: 15px;
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+
+    .actions button { min-width: 110px; }
+  </style>
 </head>
 <body>
+  <header id="headerText">QR Twin Reader</header>
 
-    <div class="header" id="headerText">QR Twin Reader (システム暗号化対応)</div>
-    
-    <div class="camera-container">
-        <video id="camera" playsinline autoplay muted></video>
-        <canvas id="overlayCanvas"></canvas>
+  <main class="camera-wrap">
+    <video id="camera" autoplay playsinline muted></video>
+    <canvas id="overlay"></canvas>
+    <canvas id="work" hidden></canvas>
+  </main>
+
+  <footer>
+    <div id="statusText" class="status">モードを選択してください</div>
+    <div id="modeButtons" class="mode-buttons">
+      <button id="normalModeBtn" class="primary">通常モード</button>
+      <button id="doubleModeBtn" class="app">二重暗号化モード</button>
     </div>
-    <canvas id="zxingCanvas"></canvas>
+  </footer>
 
-    <div class="result-panel">
-        <div class="status" id="statusText">モードを選択してください</div>
-        <div id="btnContainer">
-            <div class="mode-btns">
-                <button class="btn" id="normalModeBtn">通常モード</button>
-                <button class="btn double-enc" id="doubleEncModeBtn">二重暗号化モード</button>
-            </div>
-        </div>
+  <div id="passwordScreen" class="overlay-screen">
+    <div class="dialog">
+      <h2>QRコードは暗号化されています</h2>
+      <div class="card">
+        <div class="label">第1QRデータ</div>
+        <div id="pwQr1Text" class="value">-</div>
+      </div>
+      <div>第2QR復号用のパスワードを入力してください。</div>
+      <input id="passwordInput" type="password" placeholder="Password" />
+      <div class="actions">
+        <button id="pwCancelBtn">キャンセル</button>
+        <button id="pwResumeBtn" class="primary">スキャン再開</button>
+      </div>
     </div>
+  </div>
 
-    <!-- パスワード入力画面（アプリ暗号化用） -->
-    <div class="overlay-screen" id="passwordScreen">
-        <div class="overlay-box">
-            <h2>QRコードは暗号化されています</h2>
-            <div class="qr-data-card">
-                <label>第1QRのデータ</label>
-                <div class="text" id="qr1PreviewText">-</div>
-            </div>
-            <p>パスワードを入力してスキャン再開</p>
-            <input type="password" id="appPasswordInput" placeholder="Password" />
-            <button class="btn" onclick="submitPassword()">スキャン再開</button>
-            <button class="btn secondary" onclick="cancelPassword()">キャンセル</button>
-        </div>
+  <div id="sysEncScreen" class="overlay-screen">
+    <div class="dialog">
+      <span class="badge sys">システム暗号化</span>
+      <h2>QRコードがシステム暗号化されています</h2>
+      <div class="card">
+        <div class="label">第1QRデータ</div>
+        <div id="sysQr1Text" class="value">-</div>
+      </div>
+      <div>スキャン再開で第2QRを復号します。</div>
+      <div class="actions">
+        <button id="sysCancelBtn">キャンセル</button>
+        <button id="sysResumeBtn" class="sys">スキャン再開</button>
+      </div>
     </div>
+  </div>
 
-    <!-- システム暗号化通知画面 -->
-    <div class="overlay-screen" id="sysEncScreen">
-        <div class="overlay-box">
-            <span class="enc-badge sys">🔒 システム暗号化</span>
-            <h2 id="sysEncTitle">QRコードがシステム暗号化されています</h2>
-            <div class="qr-data-card">
-                <label>第1QRのデータ</label>
-                <div class="text" id="sysEncQr1Text">-</div>
-            </div>
-            <p id="sysEncMsg">スキャン再開で第2QRを復号します</p>
-            <button class="btn sys-enc" id="sysEncResumeBtn" onclick="resumeAfterSysEnc()">スキャン再開</button>
-            <button class="btn secondary" onclick="cancelSysEnc()">キャンセル</button>
-        </div>
+  <div id="doubleEncScreen" class="overlay-screen">
+    <div class="dialog">
+      <span class="badge app">アプリ暗号化</span>
+      <h2>QRコードがアプリ暗号化されています</h2>
+      <div class="card">
+        <div class="label">第1QRデータ（第2QRのパスワード）</div>
+        <div id="doubleQr1Text" class="value">-</div>
+      </div>
+      <div>スキャン再開で第2QRを探索します。</div>
+      <div class="actions">
+        <button id="doubleCancelBtn">キャンセル</button>
+        <button id="doubleResumeBtn" class="app">スキャン再開</button>
+      </div>
     </div>
+  </div>
 
-    <!-- 二重暗号化: 第1QR読取り後画面 -->
-    <div class="overlay-screen" id="doubleEncScreen">
-        <div class="overlay-box">
-            <span class="enc-badge app">🔐 アプリ暗号化</span>
-            <h2>QRコードがアプリ暗号化されています</h2>
-            <div class="qr-data-card">
-                <label>第1QRのデータ（パスワード）</label>
-                <div class="text" id="doubleEncQr1Text">-</div>
-            </div>
-            <p>第1QRのデータをパスワードとして第2QRを復号します</p>
-            <button class="btn double-enc" onclick="resumeAfterDoubleEnc()">スキャン再開</button>
-            <button class="btn secondary" onclick="cancelDoubleEnc()">キャンセル</button>
-        </div>
+  <div id="resultScreen" class="overlay-screen">
+    <div class="dialog">
+      <h2>読取結果</h2>
+      <div class="card">
+        <div class="label">第1QR</div>
+        <div id="resultText1" class="value">-</div>
+        <div id="resultMgmt1" class="label">管理部: -</div>
+      </div>
+      <div class="card">
+        <div class="label">第2QR</div>
+        <div id="resultText2" class="value">-</div>
+        <div id="resultMgmt2" class="label">管理部: -</div>
+      </div>
+      <div class="actions">
+        <button id="resultBackBtn" class="primary">モード選択へ戻る</button>
+      </div>
     </div>
+  </div>
 
-    <!-- 最終結果画面 -->
-    <div class="overlay-screen" id="resultScreen">
-        <div class="overlay-box" style="gap: 20px;">
-            <h2>読取完了</h2>
-            <div class="qr-data-card" style="border-color: #00E676;">
-                <label style="color:#00E676;">第1QR</label>
-                <div class="text" id="resText1">-</div>
-                
-            </div>
-            <div class="qr-data-card" style="border-color: #29B6F6;">
-                <label style="color:#29B6F6;">第2QR</label>
-                <div class="text" id="resText2">-</div>
-                
-            </div>
-            <button class="btn" onclick="goBack()">もう一度スキャン</button>
-        </div>
-    </div>
+  <script src="jsQR.js"></script>
+  <script>
+    (function () {
+      const SCAN_INTERVAL_MS = 110;
+      const MASK_BYTES_FALLBACK = 5000;
 
-    <script src="jsQR.js"></script>
+      const video = document.getElementById("camera");
+      const overlay = document.getElementById("overlay");
+      const overlayCtx = overlay.getContext("2d");
+      const work = document.getElementById("work");
+      const workCtx = work.getContext("2d", { willReadFrequently: true });
 
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', function() {
-                navigator.serviceWorker.register('./sw.js').then(function(registration) {
-                    console.log('ServiceWorker registration successful');
-                }, function(err) {
-                    console.log('ServiceWorker registration failed: ', err);
-                });
-            });
+      const headerText = document.getElementById("headerText");
+      const statusText = document.getElementById("statusText");
+      const modeButtons = document.getElementById("modeButtons");
+
+      const passwordScreen = document.getElementById("passwordScreen");
+      const sysEncScreen = document.getElementById("sysEncScreen");
+      const doubleEncScreen = document.getElementById("doubleEncScreen");
+      const resultScreen = document.getElementById("resultScreen");
+
+      const pwQr1Text = document.getElementById("pwQr1Text");
+      const sysQr1Text = document.getElementById("sysQr1Text");
+      const doubleQr1Text = document.getElementById("doubleQr1Text");
+
+      const passwordInput = document.getElementById("passwordInput");
+
+      const resultText1 = document.getElementById("resultText1");
+      const resultText2 = document.getElementById("resultText2");
+      const resultMgmt1 = document.getElementById("resultMgmt1");
+      const resultMgmt2 = document.getElementById("resultMgmt2");
+
+      let scanMode = "normal";
+      let scanStage = 0; // 0: idle, 1: scan first, 2: waiting overlay, 3: scan second
+      let firstQR = null;
+      let secondQR = null;
+
+      let stream = null;
+      let isScanning = false;
+      let isProcessing = false;
+      let lastScanTime = 0;
+      let rafId = 0;
+
+      let stage3UseSysEncDecode = false;
+      let appMask = null;
+
+      function setStatus(text) {
+        statusText.textContent = text;
+      }
+
+      function toBits16(mgmtCode) {
+        if (typeof mgmtCode !== "number" || Number.isNaN(mgmtCode)) {
+          return "0000000000000000";
         }
-    </script>
+        return (mgmtCode >>> 0).toString(2).padStart(16, "0").slice(-16);
+      }
 
-    <script>
-        const video = document.getElementById('camera');
-        const overlayCanvas = document.getElementById('overlayCanvas');
-        const ctx = overlayCanvas.getContext('2d', { willReadFrequently: true });
-        
-        const zxingCanvas = document.getElementById('zxingCanvas');
-        const zxingCtx = zxingCanvas.getContext('2d', { willReadFrequently: true });
+      function isSameData(bits) { return bits[5] === "1"; }
+      function isSysEnc(bits) { return bits[6] === "1"; }
+      function isAppEnc(bits) { return bits[7] === "1"; }
 
-        const statusText = document.getElementById('statusText');
+      function hideAllOverlays() {
+        [passwordScreen, sysEncScreen, doubleEncScreen, resultScreen].forEach((el) => {
+          el.classList.remove("show");
+        });
+      }
 
-        let isScanning = false;
-        // scanStage: 0=Idle, 1=Scan QR1, 2=Password/SysEnc wait, 3=Scan QR2
-        let scanStage = 0;
-        let firstQR = null;
-        let secondQR = null;
-        let appMask = null;
-        let lastDetectTime = 0;
-        let isProcessing = false;
-        let sysEncStage3 = false; // 通常モードでシステム暗号化の第2QR探索中フラグ
-        const SCAN_INTERVAL_MS = 50;
+      function openOverlay(el) {
+        hideAllOverlays();
+        el.classList.add("show");
+      }
 
-        // モード: 'normal' or 'double'
-        let scanMode = 'normal';
+      function drawLocation(location, color) {
+        if (!location) return;
+        overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+        overlayCtx.strokeStyle = color;
+        overlayCtx.lineWidth = 4;
+        overlayCtx.beginPath();
+        overlayCtx.moveTo(location.topLeftCorner.x, location.topLeftCorner.y);
+        overlayCtx.lineTo(location.topRightCorner.x, location.topRightCorner.y);
+        overlayCtx.lineTo(location.bottomRightCorner.x, location.bottomRightCorner.y);
+        overlayCtx.lineTo(location.bottomLeftCorner.x, location.bottomLeftCorner.y);
+        overlayCtx.closePath();
+        overlayCtx.stroke();
+      }
 
-        let barcodeDetector = null;
-        if ('BarcodeDetector' in window) {
-            try {
-                barcodeDetector = new BarcodeDetector({ formats: ['qr_code'] });
-            } catch (e) { console.warn("BarcodeDetector error", e); }
+      function clearLocationBox() {
+        overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+      }
+
+      async function sha256BytesAsync(msgBytes) {
+        const hashBuffer = await crypto.subtle.digest("SHA-256", msgBytes);
+        return new Uint8Array(hashBuffer);
+      }
+
+      async function deriveEncryptionMaskBytesAsync(password, neededBytes) {
+        if (!password) return null;
+        const pwBytes = new TextEncoder().encode(password);
+        let currentHash = await sha256BytesAsync(pwBytes);
+        const out = new Uint8Array(neededBytes);
+        let offset = 0;
+
+        while (offset < neededBytes) {
+          const take = Math.min(currentHash.length, neededBytes - offset);
+          out.set(currentHash.subarray(0, take), offset);
+          offset += take;
+          if (offset < neededBytes) {
+            currentHash = await sha256BytesAsync(currentHash);
+          }
+        }
+        return out;
+      }
+
+      function stopLoop() {
+        isScanning = false;
+        if (rafId) {
+          cancelAnimationFrame(rafId);
+          rafId = 0;
+        }
+      }
+
+      function resetSessionState() {
+        stopLoop();
+        isProcessing = false;
+        scanStage = 0;
+        firstQR = null;
+        secondQR = null;
+        stage3UseSysEncDecode = false;
+        appMask = null;
+        clearLocationBox();
+      }
+
+      function stopCamera() {
+        if (stream) {
+          stream.getTracks().forEach((t) => t.stop());
+          stream = null;
+        }
+        video.srcObject = null;
+      }
+
+      async function startCameraAndScan() {
+        resetSessionState();
+        hideAllOverlays();
+
+        try {
+          setStatus("カメラを起動中...");
+          const constraints = {
+            video: {
+              facingMode: { ideal: "environment" },
+              width: { ideal: 1280 },
+              height: { ideal: 720 }
+            },
+            audio: false
+          };
+
+          stream = await navigator.mediaDevices.getUserMedia(constraints);
+          video.srcObject = stream;
+          video.setAttribute("playsinline", "true");
+
+          await new Promise((resolve) => {
+            video.onloadedmetadata = resolve;
+            setTimeout(resolve, 1800);
+          });
+
+          await video.play();
+
+          overlay.width = video.videoWidth || 1280;
+          overlay.height = video.videoHeight || 720;
+          work.width = overlay.width;
+          work.height = overlay.height;
+
+          scanStage = 1;
+          isScanning = true;
+          lastScanTime = 0;
+
+          if (scanMode === "normal") {
+            headerText.textContent = "QR Twin Reader (通常モード)";
+            setStatus("第1QRを探索中...");
+          } else {
+            headerText.textContent = "QR Twin Reader (二重暗号化モード)";
+            setStatus("第1QR（システム暗号化）を探索中...");
+          }
+
+          rafId = requestAnimationFrame(scanLoop);
+        } catch (err) {
+          console.error(err);
+          setStatus("カメラ起動エラー: " + (err && err.message ? err.message : err));
+          stopCamera();
+          modeButtons.style.display = "flex";
+        }
+      }
+
+      function pauseForOverlay(overlayEl) {
+        stopLoop();
+        scanStage = 2;
+        openOverlay(overlayEl);
+      }
+
+      function resumeStage3(statusMessage) {
+        hideAllOverlays();
+        scanStage = 3;
+        isScanning = true;
+        lastScanTime = 0;
+        setStatus(statusMessage);
+        rafId = requestAnimationFrame(scanLoop);
+      }
+
+      function showResult() {
+        stopLoop();
+        setStatus("読取完了");
+
+        const firstBits = toBits16(firstQR && firstQR.managementCode);
+        const secondBits = toBits16(secondQR && secondQR.managementCode);
+
+        resultText1.textContent = firstQR ? firstQR.text : "-";
+        resultText2.textContent = secondQR ? secondQR.text : "-";
+        resultMgmt1.textContent = "管理部: " + firstBits;
+        resultMgmt2.textContent = "管理部: " + secondBits;
+
+        openOverlay(resultScreen);
+      }
+
+      function handleStage1(res) {
+        const bits = toBits16(res.managementCode);
+
+        if (scanMode === "double") {
+          // 二重暗号化モードの初回は system bit=1 のQRのみ受理する。
+          if (!isSysEnc(bits)) {
+            return;
+          }
         }
 
-        // --- 暗号化マスク生成 ---
-        async function sha256BytesAsync(msgBytes) {
-            const hashBuffer = await crypto.subtle.digest('SHA-256', msgBytes);
-            return new Uint8Array(hashBuffer);
-        }
-
-        async function deriveEncryptionMaskBytesAsync(password, neededBytes) {
-            if (!password) return null;
-            const pwBytes = new TextEncoder().encode(password);
-            let h0 = await sha256BytesAsync(pwBytes);
-            let result = new Uint8Array(neededBytes);
-            let offset = 0;
-            let currentHash = h0;
-            
-            while (offset < neededBytes) {
-                const copyLen = Math.min(currentHash.length, neededBytes - offset);
-                result.set(currentHash.subarray(0, copyLen), offset);
-                offset += copyLen;
-                if (offset < neededBytes) {
-                    currentHash = await sha256BytesAsync(currentHash);
-                }
-            }
-            return result;
-        }
-
-        // --- 描画関数 ---
-        const drawLine = (begin, end, color) => {
-            ctx.beginPath();
-            ctx.moveTo(begin.x, begin.y);
-            ctx.lineTo(end.x, end.y);
-            ctx.lineWidth = 4;
-            ctx.strokeStyle = color;
-            ctx.stroke();
+        firstQR = {
+          text: res.data,
+          managementCode: res.managementCode
         };
 
-        const drawBoundingBox = (points, color) => {
-            if (!points || points.length !== 4) return;
-            drawLine(points[0], points[1], color);
-            drawLine(points[1], points[2], color);
-            drawLine(points[2], points[3], color);
-            drawLine(points[3], points[0], color);
+        if (scanMode === "normal" && isSameData(bits)) {
+          secondQR = {
+            text: res.data,
+            managementCode: res.managementCode
+          };
+          showResult();
+          return;
+        }
+
+        if (scanMode === "normal") {
+          if (isSysEnc(bits)) {
+            sysQr1Text.textContent = firstQR.text;
+            pauseForOverlay(sysEncScreen);
+            return;
+          }
+
+          if (isAppEnc(bits)) {
+            pwQr1Text.textContent = firstQR.text;
+            passwordInput.value = "";
+            pauseForOverlay(passwordScreen);
+            return;
+          }
+
+          stage3UseSysEncDecode = false;
+          appMask = null;
+          resumeStage3("第2QRを探索中...");
+          return;
+        }
+
+        // double mode
+        doubleQr1Text.textContent = firstQR.text;
+        pauseForOverlay(doubleEncScreen);
+      }
+
+      function handleStage3(res) {
+        if (firstQR && res.data === firstQR.text && res.managementCode === firstQR.managementCode) {
+          return;
+        }
+
+        secondQR = {
+          text: res.data,
+          managementCode: res.managementCode
         };
+        showResult();
+      }
 
-        // --- カメラ制御 ---
-        async function startCamera() {
-            try {
-                statusText.innerText = "カメラをリクエスト中...";
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
-                });
-                
-                video.srcObject = stream;
-                video.setAttribute("playsinline", true);
-                
-                await new Promise((resolve) => {
-                    video.onloadeddata = () => resolve();
-                    setTimeout(resolve, 2000);
-                });
-                
-                try {
-                    await video.play();
-                } catch(e) {
-                    statusText.innerText = "画面をタップして再生を許可してください";
-                    return;
-                }
+      function scanLoop() {
+        if (!isScanning) return;
 
-                document.getElementById('btnContainer').style.display = 'none';
-                scanStage = 1;
-                isScanning = true;
+        const now = Date.now();
+        if (isProcessing || now - lastScanTime < SCAN_INTERVAL_MS || video.readyState < 2) {
+          rafId = requestAnimationFrame(scanLoop);
+          return;
+        }
 
-                if (scanMode === 'normal') {
-                    statusText.innerText = "第1QRを探索中... (Hybrid)";
-                } else {
-                    statusText.innerText = "第1QR（システム暗号化）を探索中...";
-                }
-                requestAnimationFrame(scanLoop);
-                
-            } catch (err) {
-                statusText.innerText = "エラー: " + err.message;
+        isProcessing = true;
+        lastScanTime = now;
+
+        try {
+          if (work.width !== video.videoWidth || work.height !== video.videoHeight) {
+            work.width = video.videoWidth;
+            work.height = video.videoHeight;
+            overlay.width = video.videoWidth;
+            overlay.height = video.videoHeight;
+          }
+
+          workCtx.drawImage(video, 0, 0, work.width, work.height);
+          const image = workCtx.getImageData(0, 0, work.width, work.height);
+
+          const opts = { inversionAttempts: "attemptBoth" };
+
+          if (scanMode === "double" && scanStage === 1) {
+            opts.sysEncDecode = true;
+          }
+
+          if (scanStage === 3) {
+            if (stage3UseSysEncDecode) {
+              opts.sysEncDecode = true;
             }
-        }
-
-        // モード選択ボタン
-        document.getElementById('normalModeBtn').addEventListener('click', () => {
-            scanMode = 'normal';
-            document.getElementById('headerText').innerText = 'QR Twin Reader (通常モード)';
-            startCamera();
-        });
-
-        document.getElementById('doubleEncModeBtn').addEventListener('click', () => {
-            scanMode = 'double';
-            document.getElementById('headerText').innerText = 'QR Twin Reader (二重暗号化モード)';
-            startCamera();
-        });
-
-        // --- UI アクション ---
-        function showPasswordScreen() {
-            if (navigator.vibrate) navigator.vibrate([40, 30, 40]);
-            
-            isScanning = false;
-            scanStage = 2;
-            document.getElementById('qr1PreviewText').innerText = firstQR.text;
-            document.getElementById('appPasswordInput').value = "";
-            document.getElementById('passwordScreen').style.display = 'flex';
-        }
-
-        function showSysEncScreen() {
-            if (navigator.vibrate) navigator.vibrate([40, 30, 40]);
-            
-            isScanning = false;
-            scanStage = 2;
-            document.getElementById('sysEncQr1Text').innerText = firstQR.text;
-            document.getElementById('sysEncScreen').style.display = 'flex';
-        }
-
-        function showDoubleEncScreen() {
-            if (navigator.vibrate) navigator.vibrate([40, 30, 40]);
-            
-            isScanning = false;
-            scanStage = 2;
-            document.getElementById('doubleEncQr1Text').innerText = firstQR.text;
-            document.getElementById('doubleEncScreen').style.display = 'flex';
-        }
-
-        function cancelPassword() {
-            document.getElementById('passwordScreen').style.display = 'none';
-            goBack();
-        }
-
-        function cancelSysEnc() {
-            document.getElementById('sysEncScreen').style.display = 'none';
-            goBack();
-        }
-
-        function cancelDoubleEnc() {
-            document.getElementById('doubleEncScreen').style.display = 'none';
-            goBack();
-        }
-
-        async function submitPassword() {
-            const pw = document.getElementById('appPasswordInput').value;
-            if (!pw) {
-                alert("パスワードを入力してください");
-                return;
+            if (appMask) {
+              opts.appEncMask = Array.from(appMask);
             }
-            
-            document.getElementById('passwordScreen').style.display = 'none';
-            statusText.innerText = "マスク生成中...";
-            
-            appMask = await deriveEncryptionMaskBytesAsync(pw, 5000);
-            
-            scanStage = 3;
-            if (firstQR) firstQR.points = null;
-            
-            statusText.innerText = "第2QRを探索中... (jsQR XOR)";
-            isScanning = true;
-            lastDetectTime = Date.now();
-            requestAnimationFrame(scanLoop);
+          }
+
+          const res = jsQR(image.data, image.width, image.height, opts);
+          if (!res || !res.data) {
+            clearLocationBox();
+            return;
+          }
+
+          drawLocation(res.location, scanStage === 1 ? "#16a34a" : "#0ea5e9");
+
+          if (scanStage === 1) {
+            handleStage1(res);
+          } else if (scanStage === 3) {
+            handleStage3(res);
+          }
+        } catch (err) {
+          console.error("scan error", err);
+        } finally {
+          isProcessing = false;
         }
 
-        function resumeAfterSysEnc() {
-            document.getElementById('sysEncScreen').style.display = 'none';
-            
-            scanStage = 3;
-            sysEncStage3 = true; // システム暗号化復号モードをON
-            if (firstQR) firstQR.points = null;
-            
-            statusText.innerText = "第2QR（システム暗号化）を探索中...";
-            isScanning = true;
-            lastDetectTime = Date.now();
-            requestAnimationFrame(scanLoop);
+        if (isScanning) {
+          rafId = requestAnimationFrame(scanLoop);
+        }
+      }
+
+      async function onPasswordResume() {
+        const pw = passwordInput.value.trim();
+        if (!pw) {
+          alert("パスワードを入力してください。");
+          return;
         }
 
-        async function resumeAfterDoubleEnc() {
-            document.getElementById('doubleEncScreen').style.display = 'none';
-            statusText.innerText = "マスク生成中...";
-            
-            // 第1QRのデータをパスワードとして使用
-            const pw = firstQR.text;
-            appMask = await deriveEncryptionMaskBytesAsync(pw, 5000);
-            
-            scanStage = 3;
-            if (firstQR) firstQR.points = null;
-            
-            statusText.innerText = "第2QR（アプリ暗号化）を探索中...";
-            isScanning = true;
-            lastDetectTime = Date.now();
-            requestAnimationFrame(scanLoop);
+        setStatus("パスワード処理中...");
+        appMask = await deriveEncryptionMaskBytesAsync(pw, MASK_BYTES_FALLBACK);
+        stage3UseSysEncDecode = false;
+        resumeStage3("第2QR（アプリ暗号化）を探索中...");
+      }
+
+      function onSysResume() {
+        appMask = null;
+        stage3UseSysEncDecode = true;
+        resumeStage3("第2QR（システム暗号化）を探索中...");
+      }
+
+      async function onDoubleResume() {
+        if (!firstQR || !firstQR.text) {
+          return;
         }
 
-        function showResultScreen() {
-            if (navigator.vibrate) navigator.vibrate([40, 30, 40]);
-            
-            isScanning = false;
-            document.getElementById('resText1').innerText = firstQR.text;
-            document.getElementById('resText2').innerText = secondQR.text;
-            document.getElementById('resultScreen').style.display = 'flex';
-        }
+        setStatus("第1QRデータから復号マスク生成中...");
+        appMask = await deriveEncryptionMaskBytesAsync(firstQR.text, MASK_BYTES_FALLBACK);
+        stage3UseSysEncDecode = false;
+        resumeStage3("第2QR（アプリ暗号化）を探索中...");
+      }
 
-        function goBack() {
-            document.getElementById('resultScreen').style.display = 'none';
-            document.getElementById('passwordScreen').style.display = 'none';
-            document.getElementById('sysEncScreen').style.display = 'none';
-            document.getElementById('doubleEncScreen').style.display = 'none';
-            firstQR = null;
-            secondQR = null;
-            appMask = null;
-            sysEncStage3 = false;
-            
-            // モード選択画面に戻す
-            scanStage = 0;
-            isScanning = false;
-            document.getElementById('btnContainer').style.display = '';
-            statusText.innerText = "モードを選択してください";
-            document.getElementById('headerText').innerText = 'QR Twin Reader (システム暗号化対応)';
-        }
+      function backToModeSelect() {
+        hideAllOverlays();
+        resetSessionState();
+        stopCamera();
+        headerText.textContent = "QR Twin Reader";
+        setStatus("モードを選択してください");
+        modeButtons.style.display = "flex";
+      }
 
-        // --- メインスキャンループ ---
-        async function scanLoop() {
-            if (!isScanning) return;
+      document.getElementById("normalModeBtn").addEventListener("click", async () => {
+        scanMode = "normal";
+        modeButtons.style.display = "none";
+        await startCameraAndScan();
+      });
 
-            if (video.videoWidth && overlayCanvas.width !== video.videoWidth) {
-                overlayCanvas.width = video.videoWidth;
-                overlayCanvas.height = video.videoHeight;
-            }
+      document.getElementById("doubleModeBtn").addEventListener("click", async () => {
+        scanMode = "double";
+        modeButtons.style.display = "none";
+        await startCameraAndScan();
+      });
 
-            ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-            if (firstQR && firstQR.points) drawBoundingBox(firstQR.points, '#00E676');
-            if (secondQR && secondQR.points) drawBoundingBox(secondQR.points, '#29B6F6');
+      document.getElementById("pwResumeBtn").addEventListener("click", onPasswordResume);
+      document.getElementById("pwCancelBtn").addEventListener("click", backToModeSelect);
+      document.getElementById("sysResumeBtn").addEventListener("click", onSysResume);
+      document.getElementById("sysCancelBtn").addEventListener("click", backToModeSelect);
+      document.getElementById("doubleResumeBtn").addEventListener("click", onDoubleResume);
+      document.getElementById("doubleCancelBtn").addEventListener("click", backToModeSelect);
+      document.getElementById("resultBackBtn").addEventListener("click", backToModeSelect);
 
-            const now = Date.now();
-            if (!isProcessing && now - lastDetectTime > SCAN_INTERVAL_MS && video.readyState >= 2) {
-                isProcessing = true;
-                lastDetectTime = now;
-
-                try {
-                    let detectedItems = [];
-
-                    // === フラグ判定 ===
-                    const needSysEncForStage1 = (scanMode === 'double' && scanStage === 1);
-                    const needSysEncForStage3 = (scanMode === 'normal' && scanStage === 3 && sysEncStage3);
-
-                    // ★ ネイティブ検出は通常モードStage1、または暗号化不要のStage3でのみ使用
-                    let useNativeDetector = barcodeDetector && (
-                        (scanStage === 1 && !needSysEncForStage1) ||
-                        (scanStage === 3 && !appMask && !needSysEncForStage3)
-                    );
-
-                    // --- [フェーズ 1] BarcodeDetector による高速検出（通常モードのみ） ---
-                    if (useNativeDetector) {
-                        try {
-                            const barcodes = await barcodeDetector.detect(video);
-                            if (barcodes && barcodes.length > 0) {
-                                for (let i = 0; i < barcodes.length; i++) {
-                                    const b = barcodes[i];
-
-                                    // Stage 3 非暗号化 → ネイティブの結果をそのまま使う（最速）
-                                    if (scanStage === 3) {
-                                        detectedItems.push({
-                                            data: b.rawValue,
-                                            managementCode: undefined,
-                                            points: b.cornerPoints
-                                        });
-                                        continue;
-                                    }
-
-                                    // Stage 1 → クロップ → jsQR で管理部を含むデコード
-                                    const bbox = b.boundingBox;
-                                    const PADDING = 50; 
-                                    const sx = Math.max(0, Math.floor(bbox.x) - PADDING);
-                                    const sy = Math.max(0, Math.floor(bbox.y) - PADDING);
-                                    const sw = Math.min(video.videoWidth - sx, Math.ceil(bbox.width) + PADDING * 2);
-                                    const sh = Math.min(video.videoHeight - sy, Math.ceil(bbox.height) + PADDING * 2);
-
-                                    zxingCanvas.width = sw;
-                                    zxingCanvas.height = sh;
-                                    zxingCtx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
-                                    const imgData = zxingCtx.getImageData(0, 0, sw, sh);
-
-                                    const res = jsQR(imgData.data, sw, sh, { inversionAttempts: "attemptBoth" });
-                                    
-                                    if (res && res.data && !res.isRaw) {
-                                        detectedItems.push({
-                                            data: res.data,
-                                            managementCode: res.managementCode,
-                                            points: [
-                                                { x: res.location.topLeftCorner.x + sx, y: res.location.topLeftCorner.y + sy },
-                                                { x: res.location.topRightCorner.x + sx, y: res.location.topRightCorner.y + sy },
-                                                { x: res.location.bottomRightCorner.x + sx, y: res.location.bottomRightCorner.y + sy },
-                                                { x: res.location.bottomLeftCorner.x + sx, y: res.location.bottomLeftCorner.y + sy }
-                                            ]
-                                        });
-                                    }
-                                }
-                            }
-                        } catch(err) { /* ignore Native Error */ }
-                    }
-
-                    // --- [フェーズ 2 / Fallback] jsQR Full-Screen Scan ---
-                    if (detectedItems.length === 0) {
-                        zxingCanvas.width = overlayCanvas.width;
-                        zxingCanvas.height = overlayCanvas.height;
-                        zxingCtx.drawImage(video, 0, 0, zxingCanvas.width, zxingCanvas.height);
-                        const fullData = zxingCtx.getImageData(0, 0, zxingCanvas.width, zxingCanvas.height);
-
-                        const opts = { inversionAttempts: "attemptBoth" };
-
-                        if (scanStage === 3) {
-                            if (appMask) {
-                                opts.appEncMask = Array.from(appMask);
-                            } else if (needSysEncForStage3) {
-                                opts.sysEncDecode = true;
-                            } else {
-                                opts.multi = true;
-                            }
-                        }
-
-                        if (needSysEncForStage1) {
-                            opts.sysEncDecode = true;
-                        }
-
-                        let resFullList = jsQR(fullData.data, fullData.width, fullData.height, opts);
-                        if (resFullList && !Array.isArray(resFullList)) resFullList = [resFullList];
-
-                        if (resFullList && resFullList.length > 0) {
-                            for (let resFull of resFullList) {
-                                if (resFull && resFull.data) {
-                                    if (scanStage === 1 && resFull.isRaw) continue;
-                                    
-                                    detectedItems.push({
-                                        data: resFull.data,
-                                        managementCode: resFull.managementCode,
-                                        points: [
-                                            resFull.location.topLeftCorner,
-                                            resFull.location.topRightCorner,
-                                            resFull.location.bottomRightCorner,
-                                            resFull.location.bottomLeftCorner
-                                        ]
-                                    });
-                                }
-                            }
-                        }
-                    }
-
-                    // --- 結果処理ループ ---
-                    for (let item of detectedItems) {
-                        const { data: resultData, managementCode: resultMgmt, points: resultPts } = item;
-
-                        if (scanStage === 1) {
-                            firstQR = { text: resultData, managementCode: resultMgmt, points: resultPts };
-                            
-                            const mgmtStr = resultMgmt !== undefined ? resultMgmt.toString(2).padStart(16, '0') : "0000000000000000";
-                            
-                            // 同一データフラグ
-                            if (mgmtStr[5] === '1') {
-                                secondQR = { text: resultData, managementCode: resultMgmt, points: resultPts };
-                                isScanning = false;
-                                isProcessing = false;
-                                showResultScreen();
-                                return;
-                            }
-
-                            if (scanMode === 'normal') {
-                                // 通常モード
-                                if (mgmtStr[6] === '1') {
-                                    // システム暗号化ビットON → システム暗号化画面を表示
-                                    isProcessing = false;
-                                    showSysEncScreen();
-                                    return;
-                                } else if (mgmtStr[7] === '1') {
-                                    // アプリ暗号化ビットON → パスワード入力画面
-                                    isProcessing = false;
-                                    showPasswordScreen();
-                                    return;
-                                } else {
-                                    // 暗号化なし → 第2QR探索
-                                    scanStage = 3;
-                                    statusText.innerText = "第2QRを探索中...";
-                                }
-                            } else {
-                                // 二重暗号化モード
-                                // 第1QR（システム暗号化）を読み取った → アプリ暗号化画面を表示
-                                isProcessing = false;
-                                showDoubleEncScreen();
-                                return;
-                            }
-                        }
-                        else if (scanStage === 3) {
-                            // 第2QR探索中
-                            const diffTxt = resultData !== firstQR.text;
-                            const diffMgmt = firstQR.managementCode !== undefined && resultMgmt !== undefined && firstQR.managementCode !== resultMgmt;
-                            
-                            if (!diffTxt && !diffMgmt) {
-                                continue;
-                            }
-
-                            secondQR = { text: resultData, managementCode: resultMgmt, points: resultPts };
-                            isScanning = false;
-                            isProcessing = false;
-                            showResultScreen();
-                            return;
-                        }
-                    }
-
-                } catch (e) {
-                    console.error("スキャンループエラー", e);
-                }
-                isProcessing = false;
-            }
-
-            if (isScanning) requestAnimationFrame(scanLoop);
-        }
-    </script>
+      window.addEventListener("beforeunload", () => {
+        stopCamera();
+      });
+    })();
+  </script>
 </body>
 </html>
-
 
